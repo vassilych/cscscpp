@@ -665,16 +665,6 @@ bool Utils::endsWithFunction(const string& buffer, const vector<string>& functio
   return false;
 }
 
-bool Utils::skipChar(const string& data, char index)
-{
-  char ch = data[index];
-  char next = index + 1 < data.size() ? data[index + 1] :
-                                        Constants::NULL_CHAR;
-  
-  
-  return false;
-}
-
 bool Utils::spaceNotNeeded(char next)
 {
   return (next == Constants::SPACE || next == Constants::START_ARG ||

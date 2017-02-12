@@ -163,8 +163,6 @@ public:
   static bool keepSpace(const string& script, char next);
   static bool keepSpaceOnce(const string& script, char next);
 
-  static bool skipChar(const string& data, char index);
-  
   static string convertToScript(const string& source,
                                 unordered_map<size_t, size_t>& char2Line);
   
