@@ -27,7 +27,10 @@ private:
     static Variable processBlock(ParsingScript& script);
     static void skipBlock(ParsingScript& script);
     static void skipRestBlocks(ParsingScript& script);
-    
+  
+    static void processArrayFor(ParsingScript& script, const string& forString);
+    static void processCanonicalFor(ParsingScript& script, const string& forString);
+  
     static void readConfig(const string& configFileName);
 };
 

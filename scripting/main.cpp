@@ -39,7 +39,7 @@ int main(int argc, char* argv[])
   
   processScript("include(\"/Users/vk/cscs/scripts/functions.cscs\");");
   string file;
-  file = "/Users/vk/cscs/scripts/temp.cscs";
+  file = "/Users/vk/Documents/github/cscscpp/bin/Debug/scripts/temp.cscs";
 
   if (argc > 3 ) {
     string script = Utils::getFileContents(argv[3]);

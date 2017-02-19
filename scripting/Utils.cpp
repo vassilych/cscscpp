@@ -28,73 +28,6 @@
 #include "UtilsOS.h"
 #include "Variable.h"
 
-string ParsingScript::getOriginalLine(size_t& lineNumber) const
-{
-  lineNumber = getOriginalLineNumber();
-  if (lineNumber == string::npos) {
-    return "";
-  }
-  
-  vector<string> lines = Utils::tokenize(m_originalScript);
-  if (lineNumber < lines.size()) {
-    return lines[lineNumber];
-  }
-  
-  return "";
-}
-
-size_t ParsingScript::getOriginalLineNumber() const
-{
-  unordered_map<size_t, size_t>& char2Line = getChar2Line();
-  if (char2Line.empty()) {
-    return string::npos;
-  }
-  
-  size_t pos = m_scriptOffset + m_from;
-  vector<size_t> lineStart = Utils::getKeys(char2Line);
-  size_t lower = 0;
-  size_t index = lower;
-  
-  if (pos <= lineStart[lower]) { // First line.
-    return char2Line[lineStart[lower]];
-  }
-  size_t upper = lineStart.size() - 1;
-  if (pos >= lineStart[upper]) { // Last line.
-    return char2Line[lineStart[upper]];
-  }
-  
-  while (lower <= upper) {
-    index = (lower + upper) / 2;
-    size_t guessPos = lineStart[index];
-    if (pos == guessPos) {
-      break;
-    }
-    if (pos < guessPos) {
-      if (index == 0 || pos > lineStart[index - 1]) {
-        break;
-      }
-      upper = index - 1;
-    } else {
-      lower = index + 1;
-    }
-  }
-  
-  return m_char2Line[lineStart[index]];
-}
-
-template <class K, class V>
-vector<K> Utils::getKeys(const unordered_map<K, V>& m)
-{
-  vector<K> keys;
-  keys.reserve(m.size());
-  for(auto kv : m) {
-    keys.push_back(kv.first);
-  }
-  std::sort(keys.begin(), keys.end());
-  
-  return keys;
-}
-
 Variable Utils::getItem(ParsingScript& script)
 {
   moveForwardIf(script, Constants::NEXT_ARG, Constants::SPACE);
@@ -112,11 +45,9 @@ Variable Utils::getItem(ParsingScript& script)
     return value;
   } else {
     // A variable, a function, or a number.
-    string parsing3 = script.rest();
     value = Parser::loadAndCalculate(script, Constants::NEXT_OR_END);
   }
   
-  string parsing4 = script.rest();
   //moveForwardIf(script, Constants::END_ARG, Constants::SPACE);
   moveForwardIf(script, Constants::SPACE);
   return value;
@@ -200,21 +131,18 @@ vector<Variable> Utils::getArgs(ParsingScript& script,
   
   ParsingScript tempScript(script.getData(), script.getPointer());
   string body = Utils::getBodyBetween(tempScript, start, end);
-  string arest1 = script.rest();
   
   while (script.getPointer() < tempScript.getPointer()) {
-    string rest1 = script.rest();
     Variable item = Utils::getItem(script);
-    if (item.type == Constants::NONE) {
-      break;
-    }
-    
     args.push_back(item);
-    string arest2 = script.rest();
-    arest2 = script.rest();
   }
   
-  string rest22 = script.rest();
+  if (script.getPointer() <= tempScript.getPointer()) {
+    // Eat closing parenthesis, if there is one, but only if it closes
+    // the current argument list, not one after it.
+    moveForwardIf(script, Constants::END_ARG);
+  }
+  
   moveForwardIf(script, Constants::SPACE);
   return args;
 }
@@ -423,6 +351,10 @@ vector<string> Utils::tokenize(const string& data,
   while (next != string::npos && next < to) {
     next = data.find_first_of(delimeters, from);
     if (next == string::npos ) {
+      if (!removeEmpty && data.size() > 0 && data[data.size() - 1] == delimeters[0]) {
+        string arg = data.substr(from);
+        args.push_back(arg);
+      }
       break;
     }
     
@@ -482,7 +414,6 @@ vector<Variable> Utils::getArrayIndices(string& varName, size_t& end)
     Utils::moveForwardIf(tempScript,
                          Constants::START_ARG, Constants::START_ARRAY);
     
-    string parsing4 = tempScript.rest();
     Variable index = Parser::loadAndCalculate(tempScript,
                                               string(1, Constants::END_ARRAY));
     indices.push_back(index);

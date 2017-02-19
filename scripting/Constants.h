@@ -100,6 +100,8 @@ public:
   static const string FLOOR;
   static const string INDEX_OF;
   static const string ISNULL;
+  static const string JOIN;
+  static const string LOCK;
   static const string LOG;
   static const string MORE;
   static const string PI;
@@ -118,12 +120,19 @@ public:
   static const string RUN;
   static const string SHOW;
   static const string SIN;
+  static const string SLEEP;
   static const string SQRT;
   static const string SUBSTR;
+  static const string SIGNAL;
   static const string TAIL;
+  static const string THREAD;
+  static const string THREAD_J;
+  static const string THREAD_ID;
   static const string TOUCH;
   static const string TRANSLATE;
   static const string TRYGET;
+  static const string TYPE;
+  static const string WAIT;
   static const string WRITE;
   static const string WRITEFILE;
   
@@ -163,6 +172,8 @@ public:
   static const unordered_map<string, int> PRIORITY;
   
   static string language(const string& lang);
+  
+  static string typeToString(Type type);
   
 };
 

@@ -42,7 +42,9 @@ void Interpreter::init()
   ParserFunction::addGlobalFunction(Constants::FLOOR,       new FloorFunction());
   ParserFunction::addGlobalFunction(Constants::ISNULL,      new IsNullFunction());
   ParserFunction::addGlobalFunction(Constants::INDEX_OF,    new IndexOfFunction());
+  ParserFunction::addGlobalFunction(Constants::JOIN,        new ThreadFunction(false, true));
   ParserFunction::addGlobalFunction(Constants::LOG,         new LogFunction());
+  ParserFunction::addGlobalFunction(Constants::LOCK,        new LockFunction());
   ParserFunction::addGlobalFunction(Constants::MORE,        new MoreFunction());
   ParserFunction::addGlobalFunction(Constants::PI,          new PiFunction());
   ParserFunction::addGlobalFunction(Constants::POW,         new PowFunction());
@@ -59,13 +61,20 @@ void Interpreter::init()
   ParserFunction::addGlobalFunction(Constants::ROUND,       new RoundFunction());
   ParserFunction::addGlobalFunction(Constants::RUN,         new RunFunction());
   ParserFunction::addGlobalFunction(Constants::SHOW,        new ShowFunction());
+  ParserFunction::addGlobalFunction(Constants::SIGNAL,      new SignalWaitFunction(true));
   ParserFunction::addGlobalFunction(Constants::SIN,         new SinFunction());
   ParserFunction::addGlobalFunction(Constants::SIZE,        new SizeFunction());
   ParserFunction::addGlobalFunction(Constants::SQRT,        new SqrtFunction());
+  ParserFunction::addGlobalFunction(Constants::SLEEP,       new SleepFunction());
   ParserFunction::addGlobalFunction(Constants::SUBSTR,      new SubstrFunction());
   ParserFunction::addGlobalFunction(Constants::TAIL,        new TailFunction());
+  ParserFunction::addGlobalFunction(Constants::THREAD,      new ThreadFunction(true));
+  ParserFunction::addGlobalFunction(Constants::THREAD_ID,   new ThreadIDFunction());
+  ParserFunction::addGlobalFunction(Constants::THREAD_J,    new ThreadFunction(false));
   ParserFunction::addGlobalFunction(Constants::TRANSLATE,   new TranslateFunction());
   ParserFunction::addGlobalFunction(Constants::TOUCH,       new TouchFunction());
+  ParserFunction::addGlobalFunction(Constants::TYPE,        new TypeFunction());
+  ParserFunction::addGlobalFunction(Constants::WAIT,        new SignalWaitFunction(false));
   ParserFunction::addGlobalFunction(Constants::WRITE,       new PrintFunction(false));
   ParserFunction::addGlobalFunction(Constants::WRITEFILE,   new WritefileFunction());
   
@@ -150,7 +159,6 @@ Variable Interpreter::processIf(ParsingScript& script)
   if (Constants::ELSE_LIST.find(nextToken) !=
       Constants::ELSE_LIST.end()) {
     script.setPointer(nextData.getPointer() + 1);
-    string rest = script.rest();
     result = processBlock(script);
   }
   
@@ -159,19 +167,41 @@ Variable Interpreter::processIf(ParsingScript& script)
 
 Variable Interpreter::processFor(ParsingScript& script)
 {
-  string varName = Utils::getToken(script, string(1, Constants::FOR_ANY));
+  string forString = Utils::getBodyBetween(script, Constants::START_ARG, Constants::END_ARG);
   script.forward();
-  Variable varValue = Utils::getItem(script);
   
-  size_t cycles = varValue.totalElements();
+  if (forString.find(Constants::END_STATEMENT) != string::npos) {
+    // Looks like: "for(i = 0; i < 10; i++)".
+    processCanonicalFor(script, forString);
+  } else {
+    // Otherwise looks like: "for(item : array)"
+    processArrayFor(script, forString);
+  }
+  
+  return Variable::emptyInstance;
+}
+
+void Interpreter::processArrayFor(ParsingScript& script, const string& forString)
+{
+  size_t index = forString.find(Constants::FOR_ANY);
+  if (index == string::npos || index == forString.size() - 1) {
+    throw ParsingException("Expecting: for(item : array)");
+  }
+  
+  string varName = forString.substr(0, index);
+  
+  ParsingScript forScript(forString);
+  Variable arrayValue = forScript.executeFrom(index + 1);
+
+  size_t cycles = arrayValue.totalElements();
   size_t startForCondition = script.getPointer();
   Variable result;
   
   for (size_t i = 0; i < cycles; i++) {
     script.setPointer(startForCondition);
-    Variable& current = varValue.getValue(i);
+    Variable& current = arrayValue.getValue(i);
     ParserFunction::addGlobalOrLocalVariable(varName,
-                    new GetVarFunction(current));
+                                             new GetVarFunction(current));
     
     result = processBlock(script);
     if (result.isReturn || result.type == Constants::BREAK_STATEMENT) {
@@ -179,8 +209,49 @@ Variable Interpreter::processFor(ParsingScript& script)
       break;
     }
   }
+}
+
+void Interpreter::processCanonicalFor(ParsingScript& script, const string& forString)
+{
+  vector<string> forTokens = Utils::tokenize(forString, string(1, Constants::END_STATEMENT));
+  if (forTokens.size() != 3) {
+    throw ParsingException("Expecting: for(init; condition; loopStatement)");
+  }
   
-  return Variable::emptyInstance;
+  ParsingScript initScript(forTokens[0] + Constants::END_STATEMENT);
+  ParsingScript condScript(forTokens[1] + Constants::END_STATEMENT);
+  ParsingScript loopScript(forTokens[2] + Constants::END_STATEMENT);
+  
+  initScript.execute();
+
+  size_t startForCondition = script.getPointer();
+  int cycles = 0;
+  bool stillValid = true;
+  Variable result;
+  
+  while (stillValid) {
+    Variable condResult = condScript.executeFrom(0);
+    stillValid = condResult.numValue != 0;
+    if (!stillValid) {
+      break;
+    }
+
+    script.setPointer(startForCondition);
+    
+    // Check for an infinite loop if we are comparing same values:
+    if (++cycles >= Constants::MAX_LOOPS) {
+      throw ParsingException("Looks like an infinite loop after " +
+                             to_string(cycles) + " cycles.");
+    }
+    
+    result = processBlock(script);
+    if (result.isReturn || result.type == Constants::BREAK_STATEMENT) {
+      script.setPointer(startForCondition);
+      skipBlock(script);
+      break;
+    }
+    loopScript.executeFrom(0);
+  }
 }
 
 Variable Interpreter::processWhile(ParsingScript& script)
@@ -192,8 +263,7 @@ Variable Interpreter::processWhile(ParsingScript& script)
   bool stillValid = true;
   Variable result;
   
-  while (stillValid)
-  {
+  while (stillValid) {
     script.setPointer(startWhileCondition);
     
     result = Parser::loadAndCalculate(script, Constants::END_ARG_STR);

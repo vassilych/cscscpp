@@ -24,7 +24,6 @@ Variable Parser::loadAndCalculate(ParsingScript& script,
                            script.rest() + "]");
   }
   
-  string parsing4 = script.rest();
   // If there is just one resulting cell there is no need
   // to perform the second step to merge tokens.
   if (listToMerge.size() == 1) {
@@ -45,6 +44,7 @@ vector<Variable> Parser::split(ParsingScript& script,
   vector<Variable> listToMerge;
   
   if (!script.stillValid() || Utils::contains(to, script.current())) {
+    script.forward();
     listToMerge.emplace_back(Variable::emptyInstance);
     return listToMerge;
   }
@@ -53,7 +53,6 @@ vector<Variable> Parser::split(ParsingScript& script,
   int negated = 0;
   bool inQuotes = false;
   int indexDepth = 0;
-  string parsing0 = script.rest();
   
   do
   { // Main processing cycle of the first part.
@@ -69,7 +68,6 @@ vector<Variable> Parser::split(ParsingScript& script,
     
     string action = Constants::EMPTY;
     
-    string aparsing00 = script.rest();
     bool keepCollecting = inQuotes || indexDepth > 0 ||
               stillCollecting(script, parsingItem, to, action);
     if (keepCollecting)
@@ -84,7 +82,6 @@ vector<Variable> Parser::split(ParsingScript& script,
       }
     }
     
-    string aparsing0 = script.rest();
     checkConsistency(script, parsingItem, listToMerge);
     
     Utils::moveForwardIf(script, Constants::SPACE);
@@ -97,9 +94,7 @@ vector<Variable> Parser::split(ParsingScript& script,
     // recursively call loadAndCalculate(). This will happen if extracted
     // item is a function or if the next item is starting with a START_ARG '('.
     ParserFunction func(script, parsingItem, ch, action);
-    string aparsing1 = script.rest();
     Variable current = func.getValue(script);
-    string aparsing2 = script.rest();
     
     if (negated > 0 && current.getType() == Constants::NUMBER) {
       // If there has been a NOT sign, this is a boolean.
@@ -114,13 +109,16 @@ vector<Variable> Parser::split(ParsingScript& script,
     } else {
       Utils::moveForwardIf(script, action[0]);
     }
-    string parsing3 = script.rest();
     
     char next = script.tryCurrent(); // we've already moved forward
     bool done = listToMerge.empty() && (next == Constants::END_STATEMENT ||
         (action == Constants::NULL_ACTION && current.getType() != Constants::NUMBER));
     if (done) {
       // If there is no numerical result, we are not in a math expression.
+      if (!action.empty() && action != Constants::END_ARG_STR) {
+        throw ParsingException("Action [" +
+                               action + "] without an argument.");
+      }
       listToMerge.emplace_back(current);
       return listToMerge;
     }
@@ -130,11 +128,9 @@ vector<Variable> Parser::split(ParsingScript& script,
     
     listToMerge.emplace_back(current);
     parsingItem.clear();
-    string parsing4 = script.rest();
-    parsing4 = script.rest();
     
   } while (script.stillValid() &&
-           (inQuotes || indexDepth > 0 || !Utils::contains(to, script.current())));
+          (inQuotes || indexDepth > 0 || !Utils::contains(to, script.current())));
   
   // This happens when called recursively inside of the math expression:
   Utils::moveForwardIf(script, Constants::END_ARG);
@@ -176,8 +172,7 @@ bool Parser::stillCollecting(const ParsingScript& script,
   action = Utils::getValidAction(tempScript);
   
   if (action != Constants::EMPTY ||
-     (item.size() > 0 && ch == Constants::SPACE)) {
-    
+     (item.size() > 0 && ch == Constants::SPACE)) {    
     return false;
   }
   
@@ -244,7 +239,6 @@ string Parser::updateAction(ParsingScript& script, const string& to)
 {
   // We search a valid action till we get to the End of Argument ')'
   // or pass the end of string.
-  string pparsing = script.rest();
   if (!script.stillValid() || script.current() == Constants::END_ARG ||
       Utils::contains(to, script.current())) {
     return Constants::NULL_ACTION;

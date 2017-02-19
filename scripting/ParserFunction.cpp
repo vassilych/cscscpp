@@ -85,7 +85,6 @@ ParserFunction* ParserFunction::getArrayFunction(const string& name,
   }
   
   size_t delta = 0;
-  string parsing = script.rest();
   vector<Variable> arrayIndices = Utils::getArrayIndices(arrayName, delta);
   
   if (arrayIndices.empty()) {

@@ -56,7 +56,9 @@ const string Constants::COS         = "cos";
 const string Constants::EXP         = "exp";
 const string Constants::FLOOR       = "floor";
 const string Constants::ISNULL      = "isnull";
-const string Constants::INDEX_OF    = "index_of";
+const string Constants::INDEX_OF    = "indexof";
+const string Constants::JOIN        = "join";
+const string Constants::LOCK        = "lock";
 const string Constants::LOG         = "log";
 const string Constants::MORE        = "more";
 const string Constants::PI          = "pi";
@@ -74,12 +76,19 @@ const string Constants::READFILE    = "readfile";
 const string Constants::READNUM     = "readnum";
 const string Constants::RUN         = "run";
 const string Constants::SHOW        = "show";
+const string Constants::SIGNAL      = "signal";
 const string Constants::SIN         = "sin";
+const string Constants::SLEEP       = "sleep";
 const string Constants::SQRT        = "sqrt";
 const string Constants::SUBSTR      = "substr";
 const string Constants::TAIL        = "tail";
-const string Constants::TRANSLATE   = "translate";
+const string Constants::THREAD      = "thread";
+const string Constants::THREAD_ID   = "threadid";
+const string Constants::THREAD_J    = "threadj";
 const string Constants::TOUCH       = "touch";
+const string Constants::TRANSLATE   = "translate";
+const string Constants::TYPE        = "type";
+const string Constants::WAIT        = "wait";
 const string Constants::WRITE       = "write";
 const string Constants::WRITEFILE   = "writefile";
 
@@ -171,3 +180,14 @@ unordered_map<string, int> initPriority()
 
 const unordered_map<string, int> Constants::PRIORITY(initPriority());
 
+string Constants::typeToString(Type type)
+{
+  switch (type) {
+    case NUMBER:             return "NUMBER";
+    case STRING:             return "STRING";
+    case ARRAY:              return "ARRAY";
+    case BREAK_STATEMENT:    return "BREAK";
+    case CONTINUE_STATEMENT: return "CONTINUE";
+    default:                 return "NONE";
+  }
+}

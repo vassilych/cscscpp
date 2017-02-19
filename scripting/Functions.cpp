@@ -8,8 +8,10 @@
 
 #include <algorithm>
 #include <iostream>
+#include <sstream>
 #include <stdlib.h>
 #include <stdio.h>
+#include <thread> 
 
 #include "Functions.h"
 #include "Interpreter.h"
@@ -17,6 +19,12 @@
 #include "Translation.h"
 #include "Utils.h"
 #include "UtilsOS.h"
+
+bool SignalWaitFunction::g_signaled = false;
+mutex SignalWaitFunction::g_mutex;
+mutex LockFunction::g_mutex;
+condition_variable SignalWaitFunction::g_cv;
+unordered_map<string, thread*> ThreadFunction::g_threads;
 
 //-------------------------------------------
 Variable StringOrNumberFunction::evaluate(ParsingScript& script)
@@ -56,7 +64,6 @@ Variable StringOrNumberFunction::evaluate(ParsingScript& script)
 //-------------------------------------------
 Variable IdentityFunction::evaluate(ParsingScript& script)
 {
-  string parsing = script.rest();
   return Parser::loadAndCalculate(script, Constants::END_ARG_STR);
 }
 
@@ -170,7 +177,7 @@ Variable PowFunction::evaluate(ParsingScript& script)
 Variable RoundFunction::evaluate(ParsingScript& script)
 {
   Variable arg = Parser::loadAndCalculate(script, Constants::END_ARG_STR);
-  Utils::checkNumber(arg);
+  //Utils::checkNumber(arg);
   return ::floor(arg.numValue + 0.5);
 }
 //-------------------------------------------
@@ -204,8 +211,7 @@ Variable SubstrFunction::evaluate(ParsingScript& script)
   
   // 5. Get the length of the substring if available.
   bool lengthAvailable = Utils::separatorExists(script);
-  if (lengthAvailable)
-  {
+  if (lengthAvailable) {
     Variable length = Utils::getItem(script);
     Utils::checkNonNegInteger(length);
     if (init.numValue + length.numValue > arg.size()) {
@@ -271,8 +277,8 @@ Variable SizeFunction::evaluate(ParsingScript& script)
   // string part if it is defined,
   // or the numerical part converted to a string otherwise.
   size_t size = element.type == Constants::ARRAY ?
-  element.tuple.size() :
-  element.toString().size();
+                     element.tuple.size() :
+                     element.toString().size();
   
   Utils::moveForwardIf(script, Constants::END_ARG, Constants::SPACE);
   
@@ -283,10 +289,8 @@ Variable SizeFunction::evaluate(ParsingScript& script)
 Variable PrintFunction::evaluate(ParsingScript& script)
 {
   bool isList = false;
-  string parsing1 = script.rest();
   vector<Variable> args = Utils::getArgs(script,
                     Constants::START_ARG, Constants::END_ARG, isList);
-  string parsing2 = script.rest();
   
   for (size_t i = 0; i < args.size(); i++) {
     if (m_color == OS::Color::NONE) {
@@ -459,7 +463,6 @@ Variable CustomFunction::evaluate(ParsingScript& script)
   vector<Variable> args = Utils::getArgs(script,
                                          Constants::START_ARG, Constants::END_ARG, isList);
   
-  string rest0 = script.rest();
   Utils::moveBackIf(script, Constants::START_GROUP);
   
   Utils::checkArgsNumber(m_args.size(), args.size(), m_name);
@@ -611,7 +614,6 @@ Variable AssignFunction::evaluate(ParsingScript& script)
   // meaning that this is an array element.
   vector<Variable> arrayIndices = Utils::getArrayIndices(m_name);
   
-  string parsing = script.rest();
   if (arrayIndices.empty()) {
     ParserFunction::addGlobalOrLocalVariable(m_name,
                                              new GetVarFunction(varValue));
@@ -941,6 +943,136 @@ Variable WritefileFunction::evaluate(ParsingScript& script)
   OS::writeFile(filename, msg);
   
   return Variable::emptyInstance;
+}
+
+static string threadIdToStr(thread::id threadId)
+{
+  ostringstream ss;
+  ss << threadId;
+  return ss.str();
+}
+
+//-------------------------------------------
+void ThreadFunction::threadWork(const string& body)
+{
+  ParsingScript script(body);
+  script.executeAll();
+}
+//-------------------------------------------
+Variable ThreadFunction::evaluate(ParsingScript& script)
+{
+  if (m_join) {
+    Variable threadId = Utils::getItem(script);
+    string threadIdStr = threadId.strValue;
+    Utils::checkNotEmpty(threadIdStr, "threadId");
+    
+    auto it = g_threads.find(threadIdStr);
+    if (it != g_threads.end()) {
+      throw ParsingException("Couldn't find thread [" +
+                             threadIdStr + "]");
+
+    }
+    it->second->join();
+    delete it->second;
+    g_threads.erase(it);
+    return Variable(threadId);
+  }
+  
+  string body = Utils::getBodyBetween(script,
+                                      Constants::START_ARG,
+                                      Constants::END_ARG);
+  
+  std::thread* work = new thread(threadWork, body);
+  string threadId = threadIdToStr(work->get_id());
+  
+  //g_threads[threadId] = work;
+  if (m_detach) {
+    work->detach();
+    //work.join();
+  }
+  
+  return Variable(threadId);
+}
+
+//-------------------------------------------
+Variable ThreadIDFunction::evaluate(ParsingScript& script)
+{
+  string threadId =  threadIdToStr(this_thread::get_id());
+  return Variable(threadId);
+}
+
+//-------------------------------------------
+Variable SleepFunction::evaluate(ParsingScript& script)
+{
+  Variable sleepVar = Utils::getItem(script);
+  Utils::checkNonNegInteger(sleepVar);
+
+  long long sleepMs = sleepVar.numValue;
+  this_thread::sleep_for(chrono::milliseconds(sleepMs));
+  return Variable::emptyInstance;
+}
+
+//-------------------------------------------
+Variable SignalWaitFunction::evaluate(ParsingScript& script)
+{
+  unique_lock<std::mutex> lock(g_mutex);
+
+  if (m_signal) {
+    g_signaled = true;
+    g_cv.notify_all();
+  } else {
+    while (!g_signaled) {
+      g_cv.wait(lock);
+    }
+    g_signaled = false; // reset it for the next time
+  }
+  
+  return Variable::emptyInstance;
+}
+
+//-------------------------------------------
+Variable LockFunction::evaluate(ParsingScript& script)
+{
+  unique_lock<std::mutex> lock(g_mutex);
+  
+  string body = Utils::getBodyBetween(script,
+                                      Constants::START_ARG,
+                                      Constants::END_ARG);
+
+  ParsingScript lockScript(body);
+  lockScript.executeAll();
+
+  return Variable::emptyInstance;
+}
+
+//-------------------------------------------
+Variable TypeFunction::evaluate(ParsingScript& script)
+{
+  // 1. Get the name of the variable.
+  string varName = Utils::getToken(script, Constants::END_ARG_STR);
+  Utils::checkNotEnd(script, Constants::SIZE);
+  
+  vector<Variable> arrayIndices = Utils::getArrayIndices(varName);
+  
+  // 2. Get the current value of the variable.
+  ParserFunction* func = ParserFunction::getFunction(varName);
+  Utils::checkNotNull(varName, func);
+  Variable currentValue = func->getValue(script);
+  Variable element = currentValue;
+  
+  // 2b. Special case for an array.
+  if (!arrayIndices.empty()) {// array element
+    element = *GetVarFunction::extractArrayElement(&currentValue, arrayIndices);
+    Utils::moveForwardIf(script, Constants::END_ARRAY);
+  }
+  
+  // 3. Take either the length of the underlying tuple or
+  // string part if it is defined,
+  // or the numerical part converted to a string otherwise.
+  string type = Constants::typeToString(element.type);
+  
+  Utils::moveForwardIf(script, Constants::END_ARG, Constants::SPACE);
+  return Variable(type);
 }
 
 //-------------------------------------------

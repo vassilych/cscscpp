@@ -9,6 +9,10 @@
 #ifndef Functions_h
 #define Functions_h
 
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+
 #include "ParserFunction.h"
 #include "Interpreter.h"
 #include "UtilsOS.h"
@@ -419,6 +423,68 @@ public:
 };
 //-------------------------------------------
 class WritefileFunction : public ParserFunction
+{
+public:
+  virtual Variable evaluate(ParsingScript& script);
+};
+//-------------------------------------------
+class LockFunction : public ParserFunction
+{
+public:
+  virtual Variable evaluate(ParsingScript& script);
+private:
+  static std::mutex g_mutex;
+};
+//-------------------------------------------
+class SleepFunction : public ParserFunction
+{
+public:
+  virtual Variable evaluate(ParsingScript& script);
+};
+//-------------------------------------------
+class SignalWaitFunction : public ParserFunction
+{
+public:
+  SignalWaitFunction(bool isSignal) :
+      m_signal(isSignal) {}
+  
+  virtual Variable evaluate(ParsingScript& script);
+private:
+  bool m_signal;
+  static bool g_signaled;
+  static std::mutex g_mutex;
+  static std::condition_variable g_cv;
+};
+//-------------------------------------------
+class WaitThreadFunction : public ParserFunction
+{
+public:
+  virtual Variable evaluate(ParsingScript& script);
+};
+//-------------------------------------------
+class ThreadFunction : public ParserFunction
+{
+public:
+  ThreadFunction(bool detach = true, bool waitThread = false)
+  : m_detach(detach), m_join(waitThread) {}
+  
+  virtual Variable evaluate(ParsingScript& script);
+
+private:
+  static void threadWork(const string& body);
+  bool m_detach;
+  bool m_join;
+  
+  static unordered_map<string, thread*> g_threads;
+};
+//-------------------------------------------
+class ThreadIDFunction : public ParserFunction
+{
+public:
+  virtual Variable evaluate(ParsingScript& script);
+};
+//-------------------------------------------
+class TypeFunction : public ParserFunction
 {
 public:
   virtual Variable evaluate(ParsingScript& script);
